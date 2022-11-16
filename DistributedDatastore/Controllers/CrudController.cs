@@ -32,8 +32,8 @@ public class CrudController : ControllerBase
         this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
 
         if (options.Value.IsLeader)
-            foreach (var port in options.Value.ServerPorts)
-                await httpClient.GetAsync($"http://localhost:{port}/crud/");
+            foreach (var server in options.Value.Servers)
+                await httpClient.GetAsync($"http://{server}/crud/");
 
         return this.dataRepository.ToList();
     }
@@ -49,8 +49,8 @@ public class CrudController : ControllerBase
             return NotFound();
 
         if (options.Value.IsLeader)
-            foreach (var port in options.Value.ServerPorts)
-                await httpClient.GetAsync($"http://localhost:{port}/crud/{id}");
+            foreach (var server in options.Value.Servers)
+                await httpClient.GetAsync($"http://{server}/crud/{id}");
 
         return data;
     }
@@ -71,8 +71,8 @@ public class CrudController : ControllerBase
         this.dataRepository.Update(data);
 
         if (options.Value.IsLeader)
-            foreach (var port in options.Value.ServerPorts)
-                await httpClient.PutAsJsonAsync($"http://localhost:{port}/crud/{id}", data);
+            foreach (var server in options.Value.Servers)
+                await httpClient.PutAsJsonAsync($"http://{server}/crud/{id}", data);
 
         return NoContent();
     }
@@ -90,8 +90,8 @@ public class CrudController : ControllerBase
         this.dataRepository.Add(data);
 
         if (options.Value.IsLeader)
-            foreach (var port in options.Value.ServerPorts)
-                await httpClient.PostAsJsonAsync($"http://localhost:{port}/crud/", data);
+            foreach (var server in options.Value.Servers)
+                await httpClient.PostAsJsonAsync($"http://{server}/crud/", data);
 
         return CreatedAtAction(nameof(GetData), new { id = data.Id }, data);
     }
@@ -109,8 +109,8 @@ public class CrudController : ControllerBase
         this.dataRepository.Remove(data);
 
         if (options.Value.IsLeader)
-            foreach (var port in options.Value.ServerPorts)
-                await httpClient.DeleteAsync($"http://localhost:{port}/crud/{id}");
+            foreach (var server in options.Value.Servers)
+                await httpClient.DeleteAsync($"http://{server}/crud/{id}");
 
         return NoContent();
     }
