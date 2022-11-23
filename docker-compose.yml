@@ -1,38 +1,46 @@
 version: '3'
 
 services:
-  server1:
-    networks:
-      - app
-      - default
-    build: .
-    ports:
-      - 5000:5000
-    environment:
-      Options__IsLeader: True
-      Kestrel__Endpoints__Http__Url: "http://server1:5000"
-
   server2:
     networks:
       - app
       - default
-    build: .
+    build:
+      context: .
+      dockerfile: DistributedDatastore.dockerfile
     ports:
       - 5001:5001
     environment:
       Options__IsLeader: False
+      Options__Self: "server2:5001"
       Kestrel__Endpoints__Http__Url: "http://server2:5001"
 
   server3:
     networks:
       - app
       - default
-    build: .
+    build:
+      context: .
+      dockerfile: DistributedDatastore.dockerfile
     ports:
       - 5002:5002
     environment:
       Options__IsLeader: False
+      Options__Self: "server3:5002"
       Kestrel__Endpoints__Http__Url: "http://server3:5002"
+
+  broker:
+    networks:
+      - app
+      - default
+    build:
+      context: .
+      dockerfile: Broker.dockerfile
+    ports:
+      - 6000:6000
+    environment:
+      Options__Leader: "server1:5000"
+      Kestrel__Endpoints__Http__Url: "http://broker:6000"
 
 networks:
   app:

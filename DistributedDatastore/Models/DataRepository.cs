@@ -6,6 +6,9 @@ public class DataRepository : IDataRepository
 {
     private Dictionary<int, Data> db = new();
 
+    private static int id = 0;
+    private object idLock = new();
+
     public List<Data> ToList()
     {
         return this.db.Values.ToList();
@@ -30,5 +33,13 @@ public class DataRepository : IDataRepository
     public void Update(Data data)
     {
         this.db[data.Id] = data;
+    }
+
+    public int GenerateId()
+    {
+        lock (idLock)
+        {
+            return ++id;
+        }
     }
 }

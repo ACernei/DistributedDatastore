@@ -1,3 +1,4 @@
+using System.Net;
 using DistributedDatastore.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -27,91 +28,187 @@ public class CrudController : ControllerBase
 
     // GET: api/Datas
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Data>>> GetData()
+    public async Task<IActionResult> GetData()
     {
-        this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
+        this.logger.LogInformation($"{GetLocation()} {HttpContext.Request.Method} {HttpContext.Request.Path}");
 
+        var data = new List<Data>();
         if (options.Value.IsLeader)
-            foreach (var server in options.Value.Servers)
-                await httpClient.GetAsync($"http://{server}/crud/");
+        {
+            foreach (var server in options.Value.GetOtherServers())
+            {
+                try
+                {
+                    var response = await httpClient.GetAsync($"http://{server}/crud/");
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseData = await response.Content.ReadFromJsonAsync<IEnumerable<Data>>();
+                        data.AddRange(responseData);
+                    }
+                }
+                catch (Exception e)
+                {
+                }
+            }
+        }
 
-        return this.dataRepository.ToList();
+        return new JsonResult(this.dataRepository.ToList().Concat(data).DistinctBy(x => x.Id));
     }
 
     // GET: api/Datas/5
     [HttpGet("{id}")]
-    public async Task<ActionResult<Data>> GetData(int id)
+    public async Task<IActionResult> GetData(int id)
     {
-        this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
+        this.logger.LogInformation($"{GetLocation()} {HttpContext.Request.Method} {HttpContext.Request.Path}");
+
+        if (options.Value.IsLeader)
+        {
+            foreach (var server in options.Value.GetOtherServers())
+            {
+                try
+                {
+                    var response = await httpClient.GetAsync($"http://{server}/crud/{id}");
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseData = await response.Content.ReadFromJsonAsync<Data>();
+                        return new JsonResult(responseData);
+                    }
+                }
+                catch (Exception e)
+                {
+                }
+
+            }
+        }
 
         var data = this.dataRepository.Find(id);
         if (data == null)
             return NotFound();
+        return new JsonResult(data);
+    }
+
+    // POST: api/Datas
+    [HttpPost]
+    public async Task<IActionResult> PostData(Data data)
+    {
+        this.logger.LogInformation($"{GetLocation()} {HttpContext.Request.Method} {HttpContext.Request.Path}");
 
         if (options.Value.IsLeader)
-            foreach (var server in options.Value.Servers)
-                await httpClient.GetAsync($"http://{server}/crud/{id}");
+        {
+            data.Id = this.dataRepository.GenerateId();
+            var rnd = new Random();
+            var chosenServers = options.Value.Servers
+                .OrderBy(r => rnd.Next())
+                .Take(options.Value.Servers.Count / 2 + 1).ToList();
+            foreach (var server in chosenServers)
+            {
+                if (server == options.Value.Self)
+                {
+                    this.dataRepository.Add(data);
+                    continue;
+                }
 
-        return data;
+                try
+                {
+                    await httpClient.PostAsJsonAsync($"http://{server}/crud/", data);
+                }
+                catch (Exception e)
+                {
+                }
+            }
+        }
+        else
+        {
+            this.dataRepository.Add(data);
+        }
+
+        return new JsonResult(data);
     }
 
     // PUT: api/Datas/5
     [HttpPut("{id}")]
     public async Task<IActionResult> PutData(int id, Data data)
     {
-        this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
-
-        if (id != data.Id)
-            return BadRequest();
-
-        var existingData = this.dataRepository.Find(id);
-        if (existingData == null)
-            return NotFound();
-
-        this.dataRepository.Update(data);
+        data.Id = id;
+        this.logger.LogInformation($"{GetLocation()} {HttpContext.Request.Method} {HttpContext.Request.Path}");
 
         if (options.Value.IsLeader)
-            foreach (var server in options.Value.Servers)
-                await httpClient.PutAsJsonAsync($"http://{server}/crud/{id}", data);
+        {
+            Data responseData = default;
+            foreach (var server in options.Value.GetOtherServers())
+            {
+                try
+                {
+                    var response = await httpClient.PutAsJsonAsync($"http://{server}/crud/{data.Id}", data);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        responseData = await response.Content.ReadFromJsonAsync<Data>();
+                    }
+                }
+                catch (Exception e)
+                {
+                }
+            }
 
-        return NoContent();
-    }
+            var existingData = this.dataRepository.Find(data.Id);
+            if (existingData == null && responseData == null)
+                return NotFound();
+            if (existingData != null)
+                this.dataRepository.Update(data);
+        }
+        else
+        {
+            var existingData = this.dataRepository.Find(data.Id);
+            if (existingData == null)
+                return NotFound();
 
-    // POST: api/Datas
-    [HttpPost]
-    public async Task<ActionResult<Data>> PostData(Data data)
-    {
-        this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
+            this.dataRepository.Update(data);
+        }
 
-        var existingData = this.dataRepository.Find(data.Id);
-        if (existingData != null)
-            return BadRequest();
-
-        this.dataRepository.Add(data);
-
-        if (options.Value.IsLeader)
-            foreach (var server in options.Value.Servers)
-                await httpClient.PostAsJsonAsync($"http://{server}/crud/", data);
-
-        return CreatedAtAction(nameof(GetData), new { id = data.Id }, data);
+        return new JsonResult(data);
     }
 
     // DELETE: api/Datas/5
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteData(int id)
     {
-        this.logger.LogInformation($"{HttpContext.Request.Method} FROM {HttpContext.Request.Path}");
-
-        var data = this.dataRepository.Find(id);
-        if (data == null)
-            return NotFound();
-
-        this.dataRepository.Remove(data);
+        this.logger.LogInformation($"{GetLocation()} {HttpContext.Request.Method} {HttpContext.Request.Path}");
 
         if (options.Value.IsLeader)
-            foreach (var server in options.Value.Servers)
-                await httpClient.DeleteAsync($"http://{server}/crud/{id}");
+        {
+            var isSuccess = false;
+            foreach (var server in options.Value.GetOtherServers())
+            {
+                try
+                {
+                    var response = await httpClient.DeleteAsync($"http://{server}/crud/{id}");
+                    isSuccess = isSuccess | response.IsSuccessStatusCode;
+                }
+                catch (Exception e)
+                {
+                }
+            }
 
-        return NoContent();
+            var existingData = this.dataRepository.Find(id);
+            if (existingData == null && !isSuccess)
+                return NotFound();
+            if (existingData != null)
+                this.dataRepository.Remove(existingData);
+        }
+        else
+        {
+            var existingData = this.dataRepository.Find(id);
+            if (existingData == null)
+                return NotFound();
+
+            this.dataRepository.Remove(existingData);
+        }
+
+        return Ok();
+    }
+
+    private string GetLocation()
+    {
+        return this.options.Value.IsLeader ? "EXTERNAL" : "INTERNAL";
     }
 }
