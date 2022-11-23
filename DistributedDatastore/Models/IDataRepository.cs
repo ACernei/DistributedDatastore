@@ -9,4 +9,5 @@ public interface IDataRepository
     void Add(Data data);
     void Remove(Data data);
     void Update(Data data);
+    int GenerateId();
 }
